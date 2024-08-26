@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point Cloud Generator by: Pozey</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .container {
+            background: #2a2a2a;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            display: flex;
+            max-width: 1200px;
+            width: 95%;
+        }
+
+        .controls {
+            flex: 1;
+            padding-right: 15px;
+            max-width: 300px;
+        }
+
+        .visualization {
+            flex: 2;
+        }
+
+        h1 {
+            font-weight: 600;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+
+        .slider-container {
+            margin-bottom: 5px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1px;
+            font-size: 0.7em;
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 3px;
+            border-radius: 2px;
+            background: #4a4a4a;
+            outline: none;
+            margin: 3px 0;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+            transition: background .15s ease-in-out;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            background: #2980b9;
+        }
+
+        .range-inputs {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1px;
+        }
+
+        .range-inputs input {
+            width: 35px;
+            padding: 1px;
+            border: 1px solid #4a4a4a;
+            border-radius: 2px;
+            font-size: 0.6em;
+            background: #3a3a3a;
+            color: #e0e0e0;
+        }
+
+        .buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+
+        button {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 3px;
+            font-size: 0.7em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .new-seed { background-color: #3498db; color: white; }
+        .randomize-all { background-color: #2ecc71; color: white; }
+        .export-svg { background-color: #e74c3c; color: white; }
+
+        #drawing-container {
+            background: #000000;
+            border-radius: 5px;
+            overflow: hidden;
+            width: 75%;
+            margin: 0 auto;
+        }
+
+        #drawing {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 22 / 34;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h1>Point Cloud Generator by Pozey</h1>
+            <div id="sliders"></div>
+            <div class="buttons">
+                <button class="new-seed" onclick="generateNewSeed()">New Seed</button>
+                <button class="randomize-all" onclick="randomizeAllParams()">Randomize All</button>
+                <button class="export-svg" onclick="exportSVG()">Export SVG</button>
+            </div>
+        </div>
+        <div class="visualization">
+            <div id="drawing-container">
+                <svg id="drawing" viewBox="0 0 1700 2200"></svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let midiAccess = null;
+        const noise = new SimplexNoise();
+        let seed = Math.random();
+        const params = {
+            numObjects: { min: 10, max: 1000, default: 100, label: "Number of Objects" },
+            objectSize: { min: 0.1, max: 20, default: 3, label: "Object Size" },
+            connectionDistance: { min: 50, max: 1000, default: 300, label: "Connection Distance" },
+            flowStrength: { min: 0, max: 100, default: 50, label: "Flow Strength" },
+            noiseScale: { min: 0.0001, max: 0.01, default: 0.001, label: "Noise Scale" },
+            noiseStrength: { min: 0, max: 500, default: 100, label: "Noise Strength" },
+            minConnections: { min: 0, max: 20, default: 2, label: "Min Connections" },
+            maxConnections: { min: 1, max: 50, default: 5, label: "Max Connections" },
+            edgeRepulsion: { min: 0, max: 200, default: 20, label: "Edge Repulsion" },
+            clusterAttraction: { min: 0, max: 200, default: 50, label: "Cluster Attraction" },
+            lineWidth: { min: 0.1, max: 10, default: 0.5, label: "Line Width" },
+            // New parameters
+            curvature: { min: 0, max: 1, default: 0, label: "Line Curvature" },
+            spiralFactor: { min: 0, max: 0.1, default: 0, label: "Spiral Factor" },
+            rotationAngle: { min: 0, max: 360, default: 0, label: "Rotation Angle" },
+            symmetry: { min: 1, max: 8, default: 1, label: "Symmetry" },
+            fractalDepth: { min: 0, max: 3, default: 0, label: "Fractal Depth" },
+            objectVariation: { min: 0, max: 1, default: 0, label: "Object Size Variation" },
+            flowComplexity: { min: 1, max: 5, default: 1, label: "Flow Complexity" },
+            colorVariation: { min: 0, max: 1, default: 0, label: "Color Variation" },
+            depthEffect: { min: 0, max: 1, default: 0, label: "Depth Effect" },
+            textureNoise: { min: 0, max: 1, default: 0, label: "Texture Noise" }
+        };
+
+        // Create sliders for parameters
+        Object.keys(params).forEach((key) => {
+            const param = params[key];
+            const container = document.createElement("div");
+            container.className = "slider-container";
+            
+            const label = document.createElement("div");
+            label.className = "slider-label";
+            label.innerHTML = `<span>${param.label}</span><span id="value-${key}">${param.default.toFixed(3)}</span>`;
+            
+            const slider = document.createElement("input");
+            slider.type = "range";
+            slider.min = param.min;
+            slider.max = param.max;
+            slider.step = (param.max - param.min) / 1000;
+            slider.value = param.default;
+            slider.className = "slider";
+            slider.id = `slider-${key}`;
+            
+            const rangeInputs = document.createElement("div");
+            rangeInputs.className = "range-inputs";
+            const minInput = document.createElement("input");
+            minInput.type = "number";
+            minInput.value = param.min;
+            minInput.id = `min-${key}`;
+            const maxInput = document.createElement("input");
+            maxInput.type = "number";
+            maxInput.value = param.max;
+            maxInput.id = `max-${key}`;
+            
+            rangeInputs.appendChild(minInput);
+            rangeInputs.appendChild(maxInput);
+            
+            container.appendChild(label);
+            container.appendChild(slider);
+            container.appendChild(rangeInputs);
+            
+            document.getElementById("sliders").appendChild(container);
+
+            slider.addEventListener("input", () => {
+                updateSliderValue(key);
+                updateVisualization();
+            });
+
+            minInput.addEventListener("change", () => {
+                updateParamRange(key);
+                updateVisualization();
+            });
+            
+            maxInput.addEventListener("change", () => {
+                updateParamRange(key);
+                updateVisualization();
+            });
+        });
+
+        function updateSliderValue(key) {
+            const slider = document.getElementById(`slider-${key}`);
+            const param = params[key];
+            param.default = parseFloat(slider.value);
+            document.getElementById(`value-${key}`).textContent = param.default.toFixed(3);
+        }
+
+        function updateParamRange(key) {
+            const minInput = document.getElementById(`min-${key}`);
+            const maxInput = document.getElementById(`max-${key}`);
+            const slider = document.getElementById(`slider-${key}`);
+            params[key].min = parseFloat(minInput.value);
+            params[key].max = parseFloat(maxInput.value);
+            slider.min = params[key].min;
+            slider.max = params[key].max;
+            params[key].default = Math.max(params[key].min, Math.min(params[key].max, params[key].default));
+            slider.value = params[key].default;
+            updateSliderValue(key);
+        }
+
+        function generateNewSeed() {
+            seed = Math.random();
+            updateVisualization();
+        }
+
+        function randomizeAllParams() {
+            Object.keys(params).forEach(key => {
+                const param = params[key];
+                param.default = Math.random() * (param.max - param.min) + param.min;
+                document.getElementById(`slider-${key}`).value = param.default;
+                updateSliderValue(key);
+            });
+            seed = Math.random();
+            updateVisualization();
+        }
+
+        function updateVisualization() {
+            const svg = document.getElementById('drawing');
+            svg.innerHTML = '';
+
+            // Create a group for the artwork
+            const artworkGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            svg.appendChild(artworkGroup);
+
+            const points = [];
+            const width = 1700;
+            const height = 2200;
+            const time = seed * 1000;
+
+            for (let i = 0; i < params.numObjects.default; i++) {
+                let x = Math.random() * width;
+                let y = Math.random() * height;
+                
+                // Apply noise offset
+                const noiseX = noise.noise3D(x * params.noiseScale.default, y * params.noiseScale.default, time * 0.1);
+                const noiseY = noise.noise3D(x * params.noiseScale.default + 1000, y * params.noiseScale.default + 1000, time * 0.1);
+                x += noiseX * params.noiseStrength.default;
+                y += noiseY * params.noiseStrength.default;
+                
+                // Apply edge repulsion
+                const edgeForce = params.edgeRepulsion.default;
+                x += Math.max(0, edgeForce - x) - Math.max(0, x - (width - edgeForce));
+                y += Math.max(0, edgeForce - y) - Math.max(0, y - (height - edgeForce));
+                
+                // Apply cluster attraction
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const dx = centerX - x;
+                const dy = centerY - y;
+                const distanceToCenter = Math.sqrt(dx * dx + dy * dy);
+                const attractionForce = params.clusterAttraction.default * 0.01;
+                x += dx * attractionForce;
+                y += dy * attractionForce;
+                
+                // Apply spiral factor
+                const angle = Math.atan2(y - centerY, x - centerX);
+                const spiralOffset = params.spiralFactor.default * distanceToCenter;
+                x += Math.cos(angle) * spiralOffset;
+                y += Math.sin(angle) * spiralOffset;
+                
+                // Apply rotation
+                const rotationRad = params.rotationAngle.default * Math.PI / 180;
+                const rotatedX = (x - centerX) * Math.cos(rotationRad) - (y - centerY) * Math.sin(rotationRad) + centerX;
+                const rotatedY = (x - centerX) * Math.sin(rotationRad) + (y - centerY) * Math.cos(rotationRad) + centerY;
+                
+                points.push({x: rotatedX, y: rotatedY});
+            }
+            
+            const lineWidth = params.lineWidth.default;
+            
+            for (let i = 0; i < points.length; i++) {
+                const connections = [];
+                for (let j = 0; j < points.length; j++) {
+                    if (i !== j) {
+                        const dx = points[i].x - points[j].x;
+                        const dy = points[i].y - points[j].y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance < params.connectionDistance.default) {
+                            connections.push({point: points[j], distance: distance});
+                        }
+                    }
+                }
+                connections.sort((a, b) => a.distance - b.distance);
+                const numConnections = Math.min(
+                    Math.max(params.minConnections.default, connections.length),
+                    params.maxConnections.default
+                );
+                
+                for (let k = 0; k < numConnections; k++) {
+                    const curvature = params.curvature.default;
+                    const midX = (points[i].x + connections[k].point.x) / 2;
+                    const midY = (points[i].y + connections[k].point.y) / 2;
+                    const controlX = midX + curvature * (midY - points[i].y);
+                    const controlY = midY - curvature * (midX - points[i].x);
+
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    path.setAttribute("d", `M ${points[i].x} ${points[i].y} Q ${controlX} ${controlY} ${connections[k].point.x} ${connections[k].point.y}`);
+                    const opacity = 0.3 + params.colorVariation.default * Math.random() * 0.7;
+                    path.setAttribute("stroke", `rgb(255, 255, 255)`);
+                    path.setAttribute("stroke-opacity", opacity);
+                    path.setAttribute("stroke-width", lineWidth * (1 - params.depthEffect.default * (1 - connections[k].distance / params.connectionDistance.default)));
+                    path.setAttribute("fill", "none");
+                    artworkGroup.appendChild(path);
+                }
+
+                const objectSize = params.objectSize.default * (1 + params.objectVariation.default * (Math.random() - 0.5));
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("cx", points[i].x);
+                circle.setAttribute("cy", points[i].y);
+                circle.setAttribute("r", objectSize);
+                circle.setAttribute("fill", "rgb(255, 255, 255)");
+                circle.setAttribute("fill-opacity", 0.5 + params.colorVariation.default * Math.random() * 0.5);
+                artworkGroup.appendChild(circle);
+
+                if (params.textureNoise.default > 0) {
+                    const textureGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    for (let t = 0; t < 5; t++) {
+                        const noiseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        const noiseOffset = params.textureNoise.default * objectSize * (Math.random() - 0.5);
+                        noiseCircle.setAttribute("cx", points[i].x + noiseOffset);
+                        noiseCircle.setAttribute("cy", points[i].y + noiseOffset);
+                        noiseCircle.setAttribute("r", objectSize * 0.2);
+                        noiseCircle.setAttribute("fill", "rgba(255,255,255,0.1)");
+                        textureGroup.appendChild(noiseCircle);
+                    }
+                    artworkGroup.appendChild(textureGroup);
+                }
+            }
+
+            // Apply symmetry
+            const symmetry = Math.floor(params.symmetry.default);
+            if (symmetry > 1) {
+                const originalContent = artworkGroup.innerHTML;
+                for (let s = 1; s < symmetry; s++) {
+                    const rotationAngle = (360 / symmetry) * s;
+                    const symmetryGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    symmetryGroup.innerHTML = originalContent;
+                    symmetryGroup.setAttribute("transform", `rotate(${rotationAngle} ${width/2} ${height/2})`);
+                    artworkGroup.appendChild(symmetryGroup);
+                }
+            }
+
+            // Apply fractal depth
+            const fractalDepth = Math.floor(params.fractalDepth.default);
+            if (fractalDepth > 0) {
+                const originalContent = artworkGroup.innerHTML;
+                for (let d = 1; d <= fractalDepth; d++) {
+                    const scale = 1 / (d + 1);
+                    const fractalGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    fractalGroup.innerHTML = originalContent;
+                    fractalGroup.setAttribute("transform", `translate(${width/2} ${height/2}) scale(${scale}) translate(${-width/2} ${-height/2})`);
+                    fractalGroup.setAttribute("opacity", 0.5);
+                    artworkGroup.appendChild(fractalGroup);
+                }
+            }
+        }
+
+        function exportSVG() {
+            const svg = document.getElementById('drawing');
+            const artworkGroup = svg.querySelector('g');
+            
+            // Create a new SVG element for export
+            const exportSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            exportSvg.setAttribute("width", "1700");
+            exportSvg.setAttribute("height", "2200");
+            exportSvg.setAttribute("viewBox", "0 0 1700 2200");
+            
+            // Clone the artwork group into the export SVG
+            exportSvg.appendChild(artworkGroup.cloneNode(true));
+            
+            const svgData = new XMLSerializer().serializeToString(exportSvg);
+            const svgBlob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            const svgUrl = URL.createObjectURL(svgBlob);
+            
+            // Create text content with parameter values
+            let textContent = "Point Cloud Generator by Pozey\n\nSettings:\n\n";
+            Object.keys(params).forEach(key => {
+                textContent += `${params[key].label}: ${params[key].default.toFixed(3)}\n`;
+            });
+            textContent += `\nSeed: ${seed}`;
+            
+            const textBlob = new Blob([textContent], {type: "text/plain;charset=utf-8"});
+            const textUrl = URL.createObjectURL(textBlob);
+            
+            // Create a container for the download links
+            const downloadContainer = document.createElement("div");
+            downloadContainer.style.display = "none";
+            
+            // Create and append SVG download link
+            const svgLink = document.createElement("a");
+            svgLink.href = svgUrl;
+            svgLink.download = "point_cloud.svg";
+            downloadContainer.appendChild(svgLink);
+            
+            // Create and append text file download link
+            const textLink = document.createElement("a");
+            textLink.href = textUrl;
+            textLink.download = "point_cloud_settings.txt";
+            downloadContainer.appendChild(textLink);
+            
+            // Append the container to the body
+            document.body.appendChild(downloadContainer);
+            
+            // Trigger both downloads
+            svgLink.click();
+            textLink.click();
+            
+            // Clean up
+            setTimeout(() => {
+                document.body.removeChild(downloadContainer);
+                URL.revokeObjectURL(svgUrl);
+                URL.revokeObjectURL(textUrl);
+            }, 100);
+        }
+
+        // Initial visualization
+        updateVisualization();
+    </script>
+</body>
+</html>
